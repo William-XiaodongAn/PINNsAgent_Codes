@@ -63,6 +63,7 @@ class Programmer:
                 
                 mse = None
                 run_time = None
+                l2rel = None
                 line_count = 0
                 
                 if self.verbose:
@@ -121,6 +122,23 @@ class Programmer:
                                 if self.verbose:
                                     print(f"[2_mse parsing failed] {e}")
                         
+                        # Extract 4_l2rel - relative L2 error (this is the per-run nRMSE,
+                        # i.e. ||pred - true||_2 / ||true||_2 for this single instance).
+                        # Exact-token match so we don't pick up the "4_l2rel_std" line.
+                        if "4_l2rel" in line:
+                            try:
+                                # Format: wandb:          4_l2rel 0.60013
+                                parts = line.split()
+                                for i, part in enumerate(parts):
+                                    if part == "4_l2rel" and i + 1 < len(parts):
+                                        l2rel = float(parts[i + 1])
+                                        if self.verbose:
+                                            print(f"[Found 4_l2rel] {l2rel}")
+                                        break
+                            except Exception as e:
+                                if self.verbose:
+                                    print(f"[4_l2rel parsing failed] {e}")
+
                         # Extract 0_run_time - from wandb output
                         if "0_run_time" in line:
                             try:
@@ -154,8 +172,10 @@ class Programmer:
                     if self.verbose:
                         print("✓ Training script executed successfully!")
                     
-                return mse if mse is not None else 1e10, run_time if run_time is not None else 0.0
-                
+                return (mse if mse is not None else 1e10,
+                        run_time if run_time is not None else 0.0,
+                        l2rel if l2rel is not None else float("nan"))
+
         except Exception as e:
             print(f"✗ Exception occurred while executing training script: {e}")
-            return 1e10, 0.0
+            return 1e10, 0.0, float("nan")

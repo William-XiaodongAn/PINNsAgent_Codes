@@ -311,6 +311,11 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
                 else:
                     print("Warning: No exploration scores retrieved")
         
+        # Snapshot cumulative LLM token usage before config generation so we can
+        # attribute the tokens spent (incl. retries) to this iteration.
+        llm_client = getattr(planner, "llm_client", None)
+        tok_before = llm_client.get_usage() if llm_client is not None else None
+
         # Generate configuration - pass exploration_scores (UCT or static)
         config = planner.generate_config(
             history=iteration_history,
@@ -322,6 +327,18 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
         )
         config["task"] = pde_name
         config["pde_list"] = [pde_name]
+
+        # Token cost spent on this iteration's LLM calls (zeros in random mode).
+        if llm_client is not None and tok_before is not None:
+            tok_after = llm_client.get_usage()
+            token_cost = {
+                "prompt": tok_after["prompt_tokens"] - tok_before["prompt_tokens"],
+                "completion": tok_after["completion_tokens"] - tok_before["completion_tokens"],
+                "total": tok_after["total_tokens"] - tok_before["total_tokens"],
+                "calls": tok_after["num_calls"] - tok_before["num_calls"],
+            }
+        else:
+            token_cost = {"prompt": 0, "completion": 0, "total": 0, "calls": 0}
         
         # Simplified configuration display
         key_params = {k: v for k, v in config.items() 
@@ -344,10 +361,11 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
         
         # Run experiment
         print("Training...")
-        mse, run_time = programmer.run_exp(yaml_path)
-        
+        mse, run_time, nrmse = programmer.run_exp(yaml_path)
+
         # Display results
-        print(f"✓ Completed | MSE: {format_mse(mse)} | Time: {format_time(run_time)}s")
+        print(f"✓ Completed | MSE: {format_mse(mse)} | nRMSE: {format_mse(nrmse)} | "
+              f"Time: {format_time(run_time)}s | Tokens: {token_cost['total']} ({token_cost['calls']} calls)")
         
         # NEW: Update visit counts if using UCT
         if memory_tree and args.use_uct:
@@ -359,7 +377,9 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
             "iter_id": iter_id,
             "config": config,
             "mse": mse,
+            "nrmse": nrmse,
             "run_time": run_time,
+            "token_cost": token_cost,
             "pde_name": pde_name,
             "run_id": run_id
         }
@@ -381,10 +401,14 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
     
     # Summarize this round of experiment
     best_iteration = min(iteration_history, key=lambda x: x["mse"])
+    total_tokens = sum((it.get("token_cost") or {}).get("total", 0) for it in iteration_history)
+    total_calls = sum((it.get("token_cost") or {}).get("calls", 0) for it in iteration_history)
     print(f"\n{'='*80}")
     print(f"Run {run_id} Summary for {pde_name}:")
     print(f"  Best MSE: {format_mse(best_iteration['mse'])}")
+    print(f"  Best nRMSE: {format_mse(best_iteration.get('nrmse', float('nan')))}")
     print(f"  Best Time: {format_time(best_iteration['run_time'])}s")
+    print(f"  Token Cost (this run): {total_tokens} tokens over {total_calls} LLM calls")
     print(f"  Best Config: {best_iteration['config']}")
     print(f"{'='*80}")
     

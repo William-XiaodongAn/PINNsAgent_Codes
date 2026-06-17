@@ -79,12 +79,15 @@ def eval_instance(i, iters):
     with torch.no_grad():
         y = model.predict(test_x)
     mse = float(((y - test_y) ** 2).mean())
-    l2re = float(np.sqrt(((y - test_y) ** 2).mean()) / np.sqrt((test_y ** 2).mean()))
+    # Per-instance relative L2 error = ||pred - true||_2 / ||true||_2 (the 1/N in each
+    # mean cancels). This is exactly one summand of the paper's nRMSE; averaging it over
+    # the S instances below gives nRMSE = (1/S) Σ ||u - û||_2 / ||u||_2.
+    rel_l2 = float(np.sqrt(((y - test_y) ** 2).sum()) / np.sqrt((test_y ** 2).sum()))
 
     del model, net, pde
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    return mse, l2re
+    return mse, rel_l2
 
 
 def parse_instances(spec):
@@ -111,19 +114,27 @@ def main():
 
     results = []
     for i in ids:
-        mse, l2re = eval_instance(i, args.iter)
-        results.append((i, mse, l2re))
-        print(f"instance {i:>3}: MSE={mse:.6e}  L2RE={l2re:.6e}", flush=True)
+        mse, rel_l2 = eval_instance(i, args.iter)
+        results.append((i, mse, rel_l2))
+        print(f"instance {i:>3}: MSE={mse:.6e}  rel_L2={rel_l2:.6e}", flush=True)
 
     mses = np.array([r[1] for r in results])
-    l2s = np.array([r[2] for r in results])
+    rel_l2s = np.array([r[2] for r in results])
+    # nRMSE (Takamoto et al. 2022; Shen et al. 2024b): mean over the S instances of the
+    # per-instance relative L2 error.
+    nrmse = float(rel_l2s.mean())
     print(f"\n=== {len(results)} instances ===")
+    print(f"nRMSE     = {nrmse:.6e}  (std {rel_l2s.std():.2e})   <- mean per-instance relative L2")
     print(f"mean MSE  = {mses.mean():.6e}  (std {mses.std():.2e})")
-    print(f"mean L2RE = {l2s.mean():.6e}  (std {l2s.std():.2e})")
 
     out = args.out if os.path.isabs(args.out) else os.path.join(ORIG_CWD, args.out)
     with open(out, "w", newline="") as f:
-        w = csv.writer(f); w.writerow(["instance", "mse", "l2re"]); w.writerows(results)
+        w = csv.writer(f)
+        w.writerow(["instance", "mse", "rel_l2"])
+        w.writerows(results)
+        w.writerow([])
+        w.writerow(["nRMSE (mean rel_l2)", nrmse])
+        w.writerow(["mean_mse", float(mses.mean())])
     print("written", out)
 
 
