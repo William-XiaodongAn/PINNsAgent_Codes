@@ -27,7 +27,7 @@ import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_SRC = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", "..",
-                                           "cardiac-agent", "data", "fenton_karma"))
+                                           "cardiac-agent", "data", "fenton_karma", "test"))
 OUT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "ref"))
 
 N = 512          # grid points per axis
@@ -77,9 +77,9 @@ def grid_coords():
     return X, Y
 
 
-def convert_one(src, split, i):
-    ic_csv = os.path.join(src, split, f"IC_{i}.csv")
-    sol_csv = os.path.join(src, split, f"solution_{i}.csv")
+def convert_one(src, i):
+    ic_csv = os.path.join(src, f"IC_{i}.csv")
+    sol_csv = os.path.join(src, f"solution_{i}.csv")
     X, Y = grid_coords()
 
     u0, v0, w0 = load_frame(ic_csv)
@@ -99,23 +99,22 @@ def convert_one(src, split, i):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--src", default=DEFAULT_SRC, help="cardiac-agent fenton_karma data dir")
-    ap.add_argument("--split", default="test", choices=["train", "test"])
+    ap.add_argument("--src", default=DEFAULT_SRC,
+                    help="folder containing IC_*.csv / solution_*.csv (e.g. .../fenton_karma/test)")
     ap.add_argument("--instances", default=None,
                     help="e.g. 10-59 or 10,11,12; omit to convert all present in the folder")
     args = ap.parse_args()
 
     os.makedirs(OUT_DIR, exist_ok=True)
-    folder = os.path.join(args.src, args.split)
     if args.instances:
         ids = parse_instances(args.instances)
     else:
-        ids = discover_instances(folder)
+        ids = discover_instances(args.src)
         if not ids:
-            raise SystemExit(f"no IC_*/solution_* csv pairs found in {folder}")
-    print(f"src={args.src}\nsplit={args.split}\ninstances={ids}\nout={OUT_DIR}\n")
+            raise SystemExit(f"no IC_*/solution_* csv pairs found in {args.src}")
+    print(f"src={args.src}\ninstances={ids}\nout={OUT_DIR}\n")
     for i in ids:
-        convert_one(args.src, args.split, i)
+        convert_one(args.src, i)
     print(f"\ndone: {len(ids)} instances")
 
 
