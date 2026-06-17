@@ -19,7 +19,8 @@ PDE_LABELS = {
     'GrayScottEquation':           ['Chaotic', 'parabolic',  '2d', 'nonlinear', 'time-dependent',   'no-boundary-condition', 'initial-condition', 'constant-coefficient', 'long-time', 'simple-geometry'],
     'KuramotoSivashinskyEquation':           ['Chaotic', 'parabolic',  '1d', 'nonlinear', 'time-dependent',   'periodic',     'initial-condition',    'constant-coefficient', 'short-time', 'simple-geometry'],
     'PoissonND':          ['Poisson', 'elliptic',   'nd', 'linear',    'time-independent', 'no-boundary-condition', 'no-initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry'],
-    'HeatND':          ['Heat',    'parabolic',  'nd', 'linear',    'time-dependent',   'mixed-boundary', 'initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry']
+    'HeatND':          ['Heat',    'parabolic',  'nd', 'linear',    'time-dependent',   'mixed-boundary', 'initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry'],
+    'fenton-karma':    ['Chaotic', 'parabolic',  '2d', 'nonlinear', 'time-dependent',   'neumann',    'initial-condition',     'constant-coefficient', 'long-time',  'simple-geometry']
 }
 
 # Feature encoding dictionary (as in original script)

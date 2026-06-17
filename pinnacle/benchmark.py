@@ -18,6 +18,7 @@ from src.pde.ns import NS2D_LidDriven, NS2D_BackStep, NS2D_LongTime
 from src.pde.poisson import Poisson2D_Classic, PoissonBoltzmann2D, Poisson3D_ComplexGeometry, Poisson2D_ManyArea, PoissonND
 from src.pde.wave import Wave1D, Wave2D_Heterogeneous, Wave2D_LongTime
 from src.pde.inverse import PoissonInv, HeatInv
+from src.pde.fenton_karma import FentonKarma2D
 from src.utils.callbacks import TesterCallback, PlotCallback, LossCallback
 from src.utils.rar import rar_wrapper
 from utils.util_colors import RED, GRAY, BLUE, YELLOW, GREEN, RESET
@@ -50,7 +51,9 @@ pde_classes = {
     'Poisson3D_ComplexGeometry': Poisson3D_ComplexGeometry,
     # ND
     'PoissonND': PoissonND,
-    'HeatND': HeatND
+    'HeatND': HeatND,
+    # cardiac
+    'fenton-karma': FentonKarma2D,
 }
 
 if __name__ == "__main__":

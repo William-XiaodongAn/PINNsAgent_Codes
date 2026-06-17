@@ -250,7 +250,14 @@ class TesterCallback(Callback):
             return 
 
         # prepare calculation
-        self.test_x_delaunay = scipy.spatial.Delaunay(self.test_x)
+        try:
+            self.test_x_delaunay = scipy.spatial.Delaunay(self.test_x)
+        except scipy.spatial.QhullError:
+            logger.warning(f"fRMSE disabled: the reference/test points are degenerate (e.g. a single "
+                           f"time slice, so the t-axis has zero range), and a {pde.input_dim}D Delaunay "
+                           f"triangulation cannot be built. Other metrics (MSE, L2RE, ...) are unaffected.")
+            self.fRMSE = False
+            return
         ptn = 3e4 # generate about 3e4 uniform sampling points in the domain
         for i in range(pde.input_dim):
             ptn /= pde.bbox[i * 2 + 1] - pde.bbox[i * 2]
