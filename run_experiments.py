@@ -332,13 +332,11 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
         if llm_client is not None and tok_before is not None:
             tok_after = llm_client.get_usage()
             token_cost = {
-                "prompt": tok_after["prompt_tokens"] - tok_before["prompt_tokens"],
-                "completion": tok_after["completion_tokens"] - tok_before["completion_tokens"],
-                "total": tok_after["total_tokens"] - tok_before["total_tokens"],
-                "calls": tok_after["num_calls"] - tok_before["num_calls"],
+                "input": tok_after["input_tokens"] - tok_before["input_tokens"],
+                "output": tok_after["output_tokens"] - tok_before["output_tokens"],
             }
         else:
-            token_cost = {"prompt": 0, "completion": 0, "total": 0, "calls": 0}
+            token_cost = {"input": 0, "output": 0}
         
         # Simplified configuration display
         key_params = {k: v for k, v in config.items() 
@@ -365,7 +363,7 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
 
         # Display results
         print(f"✓ Completed | MSE: {format_mse(mse)} | nRMSE: {format_mse(nrmse)} | "
-              f"Time: {format_time(run_time)}s | Tokens: {token_cost['total']} ({token_cost['calls']} calls)")
+              f"Time: {format_time(run_time)}s | Tokens(in/out): {token_cost['input']}/{token_cost['output']}")
         
         # NEW: Update visit counts if using UCT
         if memory_tree and args.use_uct:
@@ -401,14 +399,14 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
     
     # Summarize this round of experiment
     best_iteration = min(iteration_history, key=lambda x: x["mse"])
-    total_tokens = sum((it.get("token_cost") or {}).get("total", 0) for it in iteration_history)
-    total_calls = sum((it.get("token_cost") or {}).get("calls", 0) for it in iteration_history)
+    total_in = sum((it.get("token_cost") or {}).get("input", 0) for it in iteration_history)
+    total_out = sum((it.get("token_cost") or {}).get("output", 0) for it in iteration_history)
     print(f"\n{'='*80}")
     print(f"Run {run_id} Summary for {pde_name}:")
     print(f"  Best MSE: {format_mse(best_iteration['mse'])}")
     print(f"  Best nRMSE: {format_mse(best_iteration.get('nrmse', float('nan')))}")
     print(f"  Best Time: {format_time(best_iteration['run_time'])}s")
-    print(f"  Token Cost (this run): {total_tokens} tokens over {total_calls} LLM calls")
+    print(f"  Token Cost (this run): input={total_in}, output={total_out}")
     print(f"  Best Config: {best_iteration['config']}")
     print(f"{'='*80}")
     

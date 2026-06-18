@@ -116,8 +116,8 @@ class ExperimentLogger:
             # If all MSEs are nan, use first iteration as fallback
             best_iteration = iteration_history[0]
         
-        # Aggregate token cost across all iterations of this run.
-        token_cost_total = {"prompt": 0, "completion": 0, "total": 0, "calls": 0}
+        # Aggregate token cost (input/output) across all iterations of this run.
+        token_cost_total = {"input": 0, "output": 0}
         for iter_data in iteration_history:
             tc = iter_data.get("token_cost") or {}
             for k in token_cost_total:
@@ -143,7 +143,7 @@ class ExperimentLogger:
                     "mse": format_mse(iter_data["mse"]),
                     "nrmse": format_mse(iter_data.get("nrmse", float("nan"))),
                     "run_time": format_time(iter_data["run_time"]),
-                    "token_cost": iter_data.get("token_cost", {"prompt": 0, "completion": 0, "total": 0, "calls": 0}),
+                    "token_cost": iter_data.get("token_cost", {"input": 0, "output": 0}),
                     "config": iter_data["config"]
                 } for iter_data in iteration_history
             ]
