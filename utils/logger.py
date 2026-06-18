@@ -153,8 +153,14 @@ class ExperimentLogger:
         summary_file = os.path.join(run_output_dir, "run_summary.json")
         with open(summary_file, 'w', encoding='utf-8') as f:
             json.dump(summary, f, indent=2, ensure_ascii=False)
-        
+
         print(f"Run summary saved: {summary_file}")
+
+        # Also save a standalone token_cost.json (same convention as cardiac-agent)
+        token_cost_file = os.path.join(run_output_dir, "token_cost.json")
+        with open(token_cost_file, 'w', encoding='utf-8') as f:
+            json.dump(token_cost_total, f, indent=2)
+        print(f"Token cost saved: {token_cost_file}")
         
         # Generate and save plot
         self.plot_run_metrics(iteration_history, run_output_dir, pde_name, run_id)
