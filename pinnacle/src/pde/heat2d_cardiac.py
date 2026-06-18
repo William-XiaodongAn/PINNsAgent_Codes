@@ -55,9 +55,9 @@ class Heat2DCardiac(baseclass.BaseTimePDE):
         def pde(x, U):
             # time derivative (j=2 is t)
             u_t = dde.grad.jacobian(U, x, i=0, j=2)
-            # diffusion
-            u_xx = dde.grad.hessian(U, x, i=0, j=0, component=0)
-            u_yy = dde.grad.hessian(U, x, i=1, j=1, component=0)
+            # diffusion (single output -> no `component`, unlike the 3-field FK model)
+            u_xx = dde.grad.hessian(U, x, i=0, j=0)
+            u_yy = dde.grad.hessian(U, x, i=1, j=1)
             return u_t - alpha * (u_xx + u_yy)
 
         self.pde = pde
