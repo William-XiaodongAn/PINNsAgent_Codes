@@ -58,6 +58,12 @@ def parse_args():
     # Training settings
     parser.add_argument('--device', type=str, default='0', help='GPU device ID')
     parser.add_argument('--iter', type=int, default=20000, help='Training iteration count')
+    parser.add_argument('--fk_instance', type=int, default=None,
+                       help='Fenton-Karma test-set instance id: train on the batch-generated '
+                            'ref/fenton_karma_<i>.dat + its IC. Default: the un-indexed default pair (instance 0).')
+    parser.add_argument('--heat_instance', type=int, default=None,
+                       help='Heat2D-cardiac test-set instance id: train on the batch-generated '
+                            'ref/heat2d_cardiac_<i>.dat + its IC. Default: the un-indexed default pair (instance 0).')
     parser.add_argument('--seed', type=int, default=44, help='Random seed')
     # Path settings
     parser.add_argument('--config_path', type=str, default=None,
@@ -177,10 +183,16 @@ def initialize_agents(args, config_loader, output_dir):
         "name": "iter",  # Initial name, will be updated in each run
         "output_dir": "./outputs/temp",  # Temporary directory, will be updated in each run
         "general_method": "none",
-        "loss_weight": "none", 
+        "loss_weight": "none",
         "num_test_points": "Default"
     })
-    
+    # Pass the Fenton-Karma instance selector through to benchmark.py (via the yaml),
+    # only when set so other PDEs' configs stay untouched.
+    if args.fk_instance is not None:
+        fixed_params["fk_instance"] = args.fk_instance
+    if args.heat_instance is not None:
+        fixed_params["heat_instance"] = args.heat_instance
+
     programmer = Programmer(
         template_fixed=fixed_params, 
         train_dir=args.train_code_dir,

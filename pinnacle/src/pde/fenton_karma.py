@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 from scipy.interpolate import RegularGridInterpolator
@@ -26,8 +27,25 @@ class FentonKarma2D(baseclass.BaseTimePDE):
                 "ref/fenton_karma_init_w.dat"),
         bbox=[0, 10, 0, 10, 0, 100],
         tau_d=0.5714,
+        instance=None,
     ):
         super().__init__()
+
+        # If an instance id is given, use the batch-generated indexed files
+        # (ref/fenton_karma_<i>.dat + ref/fenton_karma_init_{u,v,w}_<i>.dat) produced
+        # by scripts/gen_fenton_karma_batch.py. Otherwise use the default pair above.
+        if instance is not None:
+            datapath = f"ref/fenton_karma_{instance}.dat"
+            icpath = (f"ref/fenton_karma_init_u_{instance}.dat",
+                      f"ref/fenton_karma_init_v_{instance}.dat",
+                      f"ref/fenton_karma_init_w_{instance}.dat")
+            for p in (datapath,) + icpath:
+                if not os.path.exists(p):
+                    raise FileNotFoundError(
+                        f"Fenton-Karma instance {instance}: missing file '{p}'. "
+                        f"Run scripts/gen_fenton_karma_batch.py to generate it first."
+                    )
+
         # output dim: u, v, w
         self.output_dim = 3
         # geom

@@ -19,6 +19,7 @@ from src.pde.poisson import Poisson2D_Classic, PoissonBoltzmann2D, Poisson3D_Com
 from src.pde.wave import Wave1D, Wave2D_Heterogeneous, Wave2D_LongTime
 from src.pde.inverse import PoissonInv, HeatInv
 from src.pde.fenton_karma import FentonKarma2D
+from src.pde.heat2d_cardiac import Heat2DCardiac
 from src.utils.callbacks import TesterCallback, PlotCallback, LossCallback
 from src.utils.rar import rar_wrapper
 from utils.util_colors import RED, GRAY, BLUE, YELLOW, GREEN, RESET
@@ -54,6 +55,7 @@ pde_classes = {
     'HeatND': HeatND,
     # cardiac
     'fenton-karma': FentonKarma2D,
+    'heat2d-cardiac': Heat2DCardiac,
 }
 
 if __name__ == "__main__":
@@ -129,7 +131,16 @@ if __name__ == "__main__":
 
     parser.add_argument('--yaml_path', type=str, default=None,
                         help="Path to the YAML configuration file, e.g., config/train_5.yaml")
-    
+
+    # Fenton-Karma test-set instance selector. If set, FentonKarma2D loads the
+    # batch-generated ref/fenton_karma_<i>.dat + its IC instead of the default pair.
+    parser.add_argument('--fk_instance', type=int, default=None,
+                        help="Fenton-Karma instance id (uses ref/fenton_karma_<i>.dat + its IC). Default None = the un-indexed default pair.")
+    # Heat2D-cardiac test-set instance selector. If set, Heat2DCardiac loads the
+    # batch-generated ref/heat2d_cardiac_<i>.dat + its IC instead of the default pair.
+    parser.add_argument('--heat_instance', type=int, default=None,
+                        help="Heat2D-cardiac instance id (uses ref/heat2d_cardiac_<i>.dat + its IC). Default None = the un-indexed default pair.")
+
     command_args = parser.parse_args()
 
     if command_args.yaml_path is not None:
@@ -166,6 +177,12 @@ if __name__ == "__main__":
         def get_model_dde(): # 获得一个 model, 这个变量是 deepxde 里面定义的类型
             if isinstance(pde_config, tuple):
                 pde = pde_config[0](**pde_config[1])
+            elif pde_config is FentonKarma2D and command_args.fk_instance is not None:
+                # train on the chosen Fenton-Karma test-set instance
+                pde = pde_config(instance=command_args.fk_instance)
+            elif pde_config is Heat2DCardiac and command_args.heat_instance is not None:
+                # train on the chosen Heat2D-cardiac test-set instance
+                pde = pde_config(instance=command_args.heat_instance)
             else:
                 pde = pde_config()
             
