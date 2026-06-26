@@ -4,6 +4,9 @@ import argparse
 import os
 import sys
 import time
+import json
+import csv
+import math
 
 # Add project root directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,6 +21,54 @@ from utils.config_loader import ConfigLoader
 from utils.logger import ExperimentLogger
 from utils.formatter import format_mse, format_time
 from database.pde_encoder import PDE_LABELS
+
+
+def parse_instances(spec):
+    """Parse an instance spec like '0-49' or '0,1,2' or '0-3,7' into a deduped,
+    order-preserving list of ints."""
+    ids = []
+    for tok in str(spec).split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if "-" in tok:
+            lo, hi = tok.split("-")
+            ids += list(range(int(lo), int(hi) + 1))
+        else:
+            ids.append(int(tok))
+    seen, out = set(), []
+    for i in ids:
+        if i not in seen:
+            seen.add(i)
+            out.append(i)
+    return out
+
+
+def resolve_instances(args):
+    """Return (instance_key, [ids]) for the batch 'search-once-reuse-rest' flow,
+    or (None, None) when no instance list was given. instance_key is the yaml/
+    benchmark argument name for the chosen PDE family."""
+    for family, key in (("heat", "heat_instance"), ("fk", "fk_instance"),
+                        ("adv", "adv_instance"), ("bg", "bg_instance"),
+                        ("tnnp", "tnnp_instance")):
+        spec = getattr(args, f"{family}_instances")
+        if spec:
+            return key, parse_instances(spec)
+    return None, None
+
+
+def _finite(xs):
+    """Keep only real, finite numbers (drop None/nan/inf)."""
+    return [x for x in xs if x is not None and not (math.isnan(x) or math.isinf(x))]
+
+
+def pick_best_iteration(iteration_history):
+    """Lowest-MSE iteration, ignoring nan/inf; falls back to the raw min if all bad."""
+    valid = [it for it in iteration_history
+             if not (math.isnan(it["mse"]) or math.isinf(it["mse"]))]
+    pool = valid if valid else iteration_history
+    return min(pool, key=lambda x: x["mse"])
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="PINNsAgent experiment script")
@@ -64,6 +115,33 @@ def parse_args():
     parser.add_argument('--heat_instance', type=int, default=None,
                        help='Heat2D-cardiac test-set instance id: train on the batch-generated '
                             'ref/heat2d_cardiac_<i>.dat + its IC. Default: the un-indexed default pair (instance 0).')
+    parser.add_argument('--adv_instance', type=int, default=None,
+                       help='Advection-cardiac test-set instance id: train on the batch-generated '
+                            'ref/advection_beta*_<i>.dat + its IC. Default: the un-indexed default pair (instance 0).')
+    parser.add_argument('--bg_instance', type=int, default=None,
+                       help='Burgers-cardiac test-set instance id: train on the batch-generated '
+                            'ref/burgers_nu*_<i>.dat + its IC. Default: the un-indexed default pair (instance 0).')
+    parser.add_argument('--tnnp_instance', type=int, default=None,
+                       help='TNNP test-set instance id: train on the batch-generated '
+                            'ref/tnnp_<i>.dat + its 20 IC fields. Default: the un-indexed default pair (instance 0).')
+    # Batch "search-once, reuse-rest" instance lists. When given, the FIRST instance
+    # runs the full LLM hyperparameter search (--num_iters); every remaining instance
+    # reuses that best config for a single training run (no LLM calls).
+    parser.add_argument('--heat_instances', type=str, default=None,
+                       help='Heat2D-cardiac instance list/range, e.g. "0-49" or "0,1,2". '
+                            'First instance is searched; the rest reuse its best config.')
+    parser.add_argument('--fk_instances', type=str, default=None,
+                       help='Fenton-Karma instance list/range, e.g. "10-59" or "0,1,2". '
+                            'First instance is searched; the rest reuse its best config.')
+    parser.add_argument('--adv_instances', type=str, default=None,
+                       help='Advection-cardiac instance list/range, e.g. "10-59" or "0,1,2". '
+                            'First instance is searched; the rest reuse its best config.')
+    parser.add_argument('--bg_instances', type=str, default=None,
+                       help='Burgers-cardiac instance list/range, e.g. "10-59" or "0,1,2". '
+                            'First instance is searched; the rest reuse its best config.')
+    parser.add_argument('--tnnp_instances', type=str, default=None,
+                       help='TNNP instance list/range, e.g. "2-9" or "0,1,2". '
+                            'First instance is searched; the rest reuse its best config.')
     parser.add_argument('--seed', type=int, default=44, help='Random seed')
     # Path settings
     parser.add_argument('--config_path', type=str, default=None,
@@ -109,7 +187,21 @@ def parse_args():
     # Validate UCT arguments
     if args.use_uct and not args.use_memory_tree:
         parser.error("--use_uct requires --use_memory_tree to be enabled")
-    
+
+    # Validate batch instance arguments (search-once, reuse-rest flow).
+    # Families: heat / fk / adv (advection) / bg (burgers). One family per run.
+    families = ("heat", "fk", "adv", "bg", "tnnp")
+    plural = {f: getattr(args, f"{f}_instances") for f in families}
+    active = [f for f, v in plural.items() if v]
+    if len(active) > 1:
+        parser.error("Specify only one of --heat_instances/--fk_instances/--adv_instances/"
+                     "--bg_instances/--tnnp_instances; one instance family per run")
+    for f in families:
+        if plural[f] and getattr(args, f"{f}_instance") is not None:
+            parser.error(f"Use either --{f}_instance (single) or --{f}_instances (batch), not both")
+    if active and args.pde_name is None:
+        parser.error("--*_instances require --pde_name (instances are specific to a single PDE)")
+
     return args
 
 def setup_experiment(args):
@@ -192,6 +284,12 @@ def initialize_agents(args, config_loader, output_dir):
         fixed_params["fk_instance"] = args.fk_instance
     if args.heat_instance is not None:
         fixed_params["heat_instance"] = args.heat_instance
+    if args.adv_instance is not None:
+        fixed_params["adv_instance"] = args.adv_instance
+    if args.bg_instance is not None:
+        fixed_params["bg_instance"] = args.bg_instance
+    if args.tnnp_instance is not None:
+        fixed_params["tnnp_instance"] = args.tnnp_instance
 
     programmer = Programmer(
         template_fixed=fixed_params, 
@@ -205,8 +303,8 @@ def initialize_agents(args, config_loader, output_dir):
     
     return kb, pgkr, memory_tree, planner, programmer, logger
 
-def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tree, planner, 
-                              programmer, logger, output_dir, run_id=1):
+def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tree, planner,
+                              programmer, logger, output_dir, run_id=1, run_output_dir=None):
     """Run experiment for a single PDE"""
     print(f"\n{'='*120}")
     # Base info string
@@ -276,7 +374,8 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
     
     # Experiment loop
     iteration_history = []
-    run_output_dir = os.path.join(output_dir, f"{pde_name}_run_{run_id}")
+    if run_output_dir is None:
+        run_output_dir = os.path.join(output_dir, f"{pde_name}_run_{run_id}")
     os.makedirs(run_output_dir, exist_ok=True)
     
     for iter_id in range(1, args.num_iters + 1):
@@ -424,6 +523,181 @@ def run_single_pde_experiment(pde_name, args, config_loader, kb, pgkr, memory_tr
     
     return iteration_history
 
+
+def run_instance_batch(pde_name, inst_key, inst_ids, args, config_loader, kb, pgkr,
+                       memory_tree, planner, programmer, logger, output_dir, run_id=1):
+    """Search-once, reuse-rest over a list of PDE instances.
+
+    The FIRST instance runs the full LLM hyperparameter search (--num_iters); its
+    best config is then reused for a single training run on every remaining
+    instance (no LLM calls). All instances share the hyperparameters; only the IC
+    and reference solution change per instance.
+    """
+    first, rest = inst_ids[0], inst_ids[1:]
+    parent_dir = os.path.join(output_dir, f"{pde_name}_instances_run_{run_id}")
+    os.makedirs(parent_dir, exist_ok=True)
+
+    # ---- Phase 1: full hyperparameter search on the first instance -------------
+    print(f"\n{'#'*120}")
+    print(f"# Phase 1/2 — full search on {inst_key}={first}  "
+          f"({pde_name}, run {run_id}/{args.num_runs}, {args.num_iters} iters)")
+    print(f"{'#'*120}")
+    programmer.fixed[inst_key] = first
+    search_dir = os.path.join(parent_dir, f"search_instance_{first}")
+    search_history = run_single_pde_experiment(
+        pde_name, args, config_loader, kb, pgkr, memory_tree, planner,
+        programmer, logger, output_dir, run_id=run_id, run_output_dir=search_dir
+    )
+
+    best = pick_best_iteration(search_history)
+    # The hyperparameters to reuse. Strip instance selectors (they come from
+    # programmer.fixed, set per instance below).
+    best_config = dict(best["config"])
+    best_config.pop("fk_instance", None)
+    best_config.pop("heat_instance", None)
+    hyper = {k: v for k, v in best_config.items() if k not in ("task", "pde_list")}
+
+    search_tokens = {
+        "input": sum((it.get("token_cost") or {}).get("input", 0) for it in search_history),
+        "output": sum((it.get("token_cost") or {}).get("output", 0) for it in search_history),
+    }
+
+    print(f"\n✅ Phase 1 done. Best config from {inst_key}={first} "
+          f"(iter {best['iter_id']} | MSE {format_mse(best['mse'])} | "
+          f"nRMSE {format_mse(best.get('nrmse', float('nan')))}):")
+    print(f"   {hyper}")
+
+    instance_results = [{
+        "instance": first, "phase": "search", "mse": best["mse"],
+        "nrmse": best.get("nrmse", float("nan")), "run_time": best["run_time"],
+    }]
+
+    # ---- Phase 2: reuse the best config on every remaining instance ------------
+    if rest:
+        print(f"\n{'#'*120}")
+        print(f"# Phase 2/2 — reuse best config on {len(rest)} instance(s), no LLM: {rest}")
+        print(f"{'#'*120}")
+    for inst in rest:
+        print(f"\n{'─'*80}")
+        print(f"Reuse on {inst_key}={inst}")
+        print(f"{'─'*80}")
+        inst_dir = os.path.join(parent_dir, f"reuse_instance_{inst}")
+        os.makedirs(inst_dir, exist_ok=True)
+
+        programmer.fixed["output_dir"] = parent_dir
+        programmer.fixed["name"] = f"reuse_instance_{inst}"
+        programmer.fixed[inst_key] = inst
+
+        yaml_path = os.path.join(inst_dir, "config.yaml")
+        programmer.write_yaml(best_config, yaml_path)
+
+        print("Training (reused config)...")
+        mse, run_time, nrmse = programmer.run_exp(yaml_path)
+        print(f"✓ Completed | MSE: {format_mse(mse)} | nRMSE: {format_mse(nrmse)} | "
+              f"Time: {format_time(run_time)}s")
+
+        instance_results.append({
+            "instance": inst, "phase": "reuse", "mse": mse,
+            "nrmse": nrmse, "run_time": run_time,
+        })
+
+        # Record the reused config + this instance's result in the knowledge base.
+        record = dict(best_config)
+        record["task"] = pde_name
+        record["mse"] = mse
+        record["run_time"] = run_time
+        kb.add_record(record)
+
+    save_instance_batch_summary(parent_dir, pde_name, inst_key, inst_ids, first,
+                                best_config, best, search_tokens, instance_results, args)
+    return instance_results
+
+
+def save_instance_batch_summary(parent_dir, pde_name, inst_key, inst_ids, first_inst,
+                                best_config, best_search_iter, search_tokens,
+                                instance_results, args):
+    """Write per-instance CSV + JSON summary and print the aggregate table.
+
+    The headline metric is nRMSE = mean over instances of each instance's relative
+    L2 error (4_l2rel), matching scripts/eval_test_set.py and the paper convention.
+    """
+    hyper = {k: v for k, v in best_config.items() if k not in ("task", "pde_list")}
+    nrmses = _finite([r["nrmse"] for r in instance_results])
+    mses = _finite([r["mse"] for r in instance_results])
+    nrmse_mean = sum(nrmses) / len(nrmses) if nrmses else float("nan")
+    mse_mean = sum(mses) / len(mses) if mses else float("nan")
+
+    # ---- per-instance CSV ------------------------------------------------------
+    csv_path = os.path.join(parent_dir, "instance_results.csv")
+    with open(csv_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["instance", "phase", "mse", "nrmse", "run_time"])
+        for r in instance_results:
+            w.writerow([r["instance"], r["phase"], r["mse"], r["nrmse"], r["run_time"]])
+        w.writerow([])
+        w.writerow(["nRMSE (mean over instances)", nrmse_mean])
+        w.writerow(["mean_mse", mse_mean])
+        w.writerow(["num_instances", len(instance_results)])
+
+    # ---- JSON summary ----------------------------------------------------------
+    summary = {
+        "pde_name": pde_name,
+        "instance_kind": inst_key,
+        "instances": inst_ids,
+        "search_instance": first_inst,
+        "num_instances": len(instance_results),
+        "best_config": best_config,
+        "search_best": {
+            "iter_id": best_search_iter["iter_id"],
+            "mse": best_search_iter["mse"],
+            "nrmse": best_search_iter.get("nrmse", float("nan")),
+            "run_time": best_search_iter["run_time"],
+        },
+        "search_token_cost": search_tokens,
+        "aggregate": {"nrmse_mean": nrmse_mean, "mse_mean": mse_mean},
+        "per_instance": instance_results,
+        "run_config": {
+            "num_iters": args.num_iters,
+            "iter": args.iter,
+            "simulate_new_pde": args.simulate_new_pde,
+            "seed": args.seed,
+        },
+    }
+    json_path = os.path.join(parent_dir, "batch_summary.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+
+    # ---- console table ---------------------------------------------------------
+    print(f"\n{'='*120}")
+    print(f"📦 INSTANCE BATCH SUMMARY — {pde_name}  ({inst_key})")
+    print(f"{'='*120}")
+    print(f"Searched on instance {first_inst}; reused best config on {len(instance_results) - 1} more.")
+    print(f"Best config: {hyper}")
+    print(f"\n{'instance':>10} {'phase':>8} {'MSE':>16} {'nRMSE':>16} {'time(s)':>10}")
+    print("-" * 64)
+    for r in instance_results:
+        print(f"{r['instance']:>10} {r['phase']:>8} {format_mse(r['mse']):>16} "
+              f"{format_mse(r['nrmse']):>16} {format_time(r['run_time']):>10}")
+    print("-" * 64)
+    print(f"nRMSE (mean over {len(nrmses)} instances): {format_mse(nrmse_mean)}")
+    print(f"mean MSE: {format_mse(mse_mean)}")
+    print(f"Search LLM tokens (in/out): {search_tokens['input']}/{search_tokens['output']}")
+    print(f"Saved: {csv_path}")
+    print(f"Saved: {json_path}")
+    print(f"{'='*120}")
+
+
+def save_knowledge_base(args, kb):
+    """Persist the knowledge base to CSV when --save_kb is set."""
+    if args.save_kb:
+        save_path = args.kb_save_path if args.kb_save_path else None
+        kb.save(save_path)
+        saved_to = save_path if save_path else args.csv_path
+        print(f"\n Knowledge base saved to: {saved_to}")
+    else:
+        print(f"\n Knowledge base not saved (use --save_kb to enable saving)")
+
+
 def main():
     args = parse_args()
     
@@ -443,7 +717,22 @@ def main():
     print(f"Created Output Directory: {output_dir}")
     print(f"PDEs to run: {pde_list}")
     print(f"{'='*120}")
-    
+
+    # --- Batch "search-once, reuse-rest" over instances --------------------------
+    inst_key, inst_ids = resolve_instances(args)
+    if inst_ids:
+        pde_name = pde_list[0]  # validated: instance lists require a single --pde_name
+        print(f"Instance batch ({inst_key}): {inst_ids}")
+        print(f"  → search on {inst_ids[0]}, reuse best config on {len(inst_ids) - 1} more")
+        for run_id in range(1, args.num_runs + 1):
+            run_instance_batch(
+                pde_name, inst_key, inst_ids, args, config_loader,
+                kb, pgkr, memory_tree, planner, programmer, logger,
+                output_dir, run_id
+            )
+        save_knowledge_base(args, kb)
+        return
+
     # Run experiments
     all_results = {}
     
@@ -467,14 +756,8 @@ def main():
         print(f"\n✅ Completed all {args.num_runs} runs for {pde_name}\n")
     
     # Save knowledge base (controlled by argument)
-    if args.save_kb:
-        save_path = args.kb_save_path if args.kb_save_path else None
-        kb.save(save_path)
-        saved_to = save_path if save_path else args.csv_path
-        print(f"\n Knowledge base saved to: {saved_to}")
-    else:
-        print(f"\n Knowledge base not saved (use --save_kb to enable saving)")
-    
+    save_knowledge_base(args, kb)
+
     # Final summary
     logger.save_experiment_summary(all_results, args, completed_runs=args.num_runs)
     

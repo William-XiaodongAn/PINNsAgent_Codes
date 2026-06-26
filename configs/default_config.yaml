@@ -195,6 +195,6 @@ search_space:
 
 # LLM configuration
 llm_config:
-  api_key: ""# Replace with your OpenAI API key
+  api_key: ""  # leave empty; set the OPENAI_API_KEY environment variable instead (never commit a real key)
   base_url: "https://api.openai.com/v1" # OpenAI official endpoint
   model: "gpt-4o"

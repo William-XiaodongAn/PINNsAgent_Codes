@@ -173,3 +173,12 @@ config/ICML_2025/
 log_summary/
 log_summary
 *.txt
+
+# Ignore all data files
+*.dat
+
+# Ignore PyTorch model checkpoints
+*.pt
+
+# Optional: Ignore experimental outputs if they are just local logs
+outputs/experiments/

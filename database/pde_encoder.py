@@ -21,19 +21,27 @@ PDE_LABELS = {
     'PoissonND':          ['Poisson', 'elliptic',   'nd', 'linear',    'time-independent', 'no-boundary-condition', 'no-initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry'],
     'HeatND':          ['Heat',    'parabolic',  'nd', 'linear',    'time-dependent',   'mixed-boundary', 'initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry'],
     'fenton-karma':    ['Chaotic', 'parabolic',  '2d', 'nonlinear', 'time-dependent',   'neumann',    'initial-condition',     'constant-coefficient', 'long-time',  'simple-geometry'],
-    'heat2d-cardiac':  ['Heat',    'parabolic',  '2d', 'linear',    'time-dependent',   'periodic',   'initial-condition',     'constant-coefficient', 'short-time', 'simple-geometry']
+    'heat2d-cardiac':  ['Heat',    'parabolic',  '2d', 'linear',    'time-dependent',   'periodic',   'initial-condition',     'constant-coefficient', 'short-time', 'simple-geometry'],
+    'advection_beta0.1': ['Advection', 'hyperbolic', '1d', 'linear',    'time-dependent', 'periodic', 'initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry'],
+    'advection_beta1.0': ['Advection', 'hyperbolic', '1d', 'linear',    'time-dependent', 'periodic', 'initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry'],
+    'burgers_nu0.001':   ['Burgers',   'parabolic',  '1d', 'nonlinear', 'time-dependent', 'periodic', 'initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry'],
+    'burgers_nu1.0':     ['Burgers',   'parabolic',  '1d', 'nonlinear', 'time-dependent', 'periodic', 'initial-condition', 'constant-coefficient', 'short-time', 'simple-geometry'],
+    'TNNP':              ['Chaotic',   'parabolic',  '2d', 'nonlinear', 'time-dependent', 'neumann',  'initial-condition', 'constant-coefficient', 'long-time',  'simple-geometry'],
 }
 
 # Feature encoding dictionary (as in original script)
 feature_encoding = {
-    'Burgers': [1, 0, 0, 0, 0, 0, 0, 0], 
-    'Poisson': [0, 1, 0, 0, 0, 0, 0, 0], 
-    'Heat': [0, 0, 1, 0, 0, 0, 0, 0], 
-    'NS': [0, 0, 0, 1, 0, 0, 0, 0], 
-    'Wave': [0, 0, 0, 0, 1, 0, 0, 0], 
-    'Chaotic': [0, 0, 0, 0, 0, 1, 0, 0], 
-    'Inverse': [0, 0, 0, 0, 0, 0, 1, 0], 
-    'Darcy': [0, 0, 0, 0, 0, 0, 0, 1],  
+    # Family one-hot extended to length 9 to add 'Advection'. Appending a 0 to
+    # every existing family leaves all pairwise cosine similarities unchanged.
+    'Burgers':   [1, 0, 0, 0, 0, 0, 0, 0, 0],
+    'Poisson':   [0, 1, 0, 0, 0, 0, 0, 0, 0],
+    'Heat':      [0, 0, 1, 0, 0, 0, 0, 0, 0],
+    'NS':        [0, 0, 0, 1, 0, 0, 0, 0, 0],
+    'Wave':      [0, 0, 0, 0, 1, 0, 0, 0, 0],
+    'Chaotic':   [0, 0, 0, 0, 0, 1, 0, 0, 0],
+    'Inverse':   [0, 0, 0, 0, 0, 0, 1, 0, 0],
+    'Darcy':     [0, 0, 0, 0, 0, 0, 0, 1, 0],
+    'Advection': [0, 0, 0, 0, 0, 0, 0, 0, 1],
     'parabolic': [1, 0, 0, 0], 
     'elliptic': [0, 1, 0, 0], 
     'hyperbolic': [0, 0, 1, 0], 

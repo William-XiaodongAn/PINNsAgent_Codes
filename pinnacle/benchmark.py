@@ -20,6 +20,9 @@ from src.pde.wave import Wave1D, Wave2D_Heterogeneous, Wave2D_LongTime
 from src.pde.inverse import PoissonInv, HeatInv
 from src.pde.fenton_karma import FentonKarma2D
 from src.pde.heat2d_cardiac import Heat2DCardiac
+from src.pde.advection_cardiac import AdvectionBeta01Cardiac, AdvectionBeta10Cardiac
+from src.pde.burgers_cardiac import BurgersNu0001Cardiac, BurgersNu10Cardiac
+from src.pde.tnnp import TNNP2D
 from src.utils.callbacks import TesterCallback, PlotCallback, LossCallback
 from src.utils.rar import rar_wrapper
 from utils.util_colors import RED, GRAY, BLUE, YELLOW, GREEN, RESET
@@ -56,6 +59,11 @@ pde_classes = {
     # cardiac
     'fenton-karma': FentonKarma2D,
     'heat2d-cardiac': Heat2DCardiac,
+    'advection_beta0.1': AdvectionBeta01Cardiac,
+    'advection_beta1.0': AdvectionBeta10Cardiac,
+    'burgers_nu0.001': BurgersNu0001Cardiac,
+    'burgers_nu1.0': BurgersNu10Cardiac,
+    'TNNP': TNNP2D,
 }
 
 if __name__ == "__main__":
@@ -140,6 +148,13 @@ if __name__ == "__main__":
     # batch-generated ref/heat2d_cardiac_<i>.dat + its IC instead of the default pair.
     parser.add_argument('--heat_instance', type=int, default=None,
                         help="Heat2D-cardiac instance id (uses ref/heat2d_cardiac_<i>.dat + its IC). Default None = the un-indexed default pair.")
+    # Advection-cardiac / Burgers-cardiac instance selectors (same idea as above).
+    parser.add_argument('--adv_instance', type=int, default=None,
+                        help="Advection-cardiac instance id (uses ref/advection_beta*_<i>.dat + its IC). Default None = the un-indexed default pair.")
+    parser.add_argument('--bg_instance', type=int, default=None,
+                        help="Burgers-cardiac instance id (uses ref/burgers_nu*_<i>.dat + its IC). Default None = the un-indexed default pair.")
+    parser.add_argument('--tnnp_instance', type=int, default=None,
+                        help="TNNP instance id (uses ref/tnnp_<i>.dat + its 20 IC fields). Default None = the un-indexed default pair.")
 
     command_args = parser.parse_args()
 
@@ -183,6 +198,15 @@ if __name__ == "__main__":
             elif pde_config is Heat2DCardiac and command_args.heat_instance is not None:
                 # train on the chosen Heat2D-cardiac test-set instance
                 pde = pde_config(instance=command_args.heat_instance)
+            elif pde_config in (AdvectionBeta01Cardiac, AdvectionBeta10Cardiac) and command_args.adv_instance is not None:
+                # train on the chosen Advection-cardiac test-set instance
+                pde = pde_config(instance=command_args.adv_instance)
+            elif pde_config in (BurgersNu0001Cardiac, BurgersNu10Cardiac) and command_args.bg_instance is not None:
+                # train on the chosen Burgers-cardiac test-set instance
+                pde = pde_config(instance=command_args.bg_instance)
+            elif pde_config is TNNP2D and command_args.tnnp_instance is not None:
+                # train on the chosen TNNP test-set instance
+                pde = pde_config(instance=command_args.tnnp_instance)
             else:
                 pde = pde_config()
             
