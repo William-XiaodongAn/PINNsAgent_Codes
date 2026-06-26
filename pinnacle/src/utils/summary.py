@@ -7,6 +7,7 @@ from utils.util_prints import print_dict, print_namespace
 from src.utils.args import parse_hidden_layers, parse_loss_weight, parse_width_depth
 import os
 import csv
+import tempfile
 
 # 这个函数的目的是对多个文件进行批量处理,并返回处理结果的 mean 和 std。
 def _process(func, path, repeat):
@@ -116,12 +117,25 @@ def summary(runs_dir, tasknum, repeat, iters, csv_name, exp_time):
                        mxe_mean, mxe_std, l2rel_mean, l2rel_std, crmse_mean, crmse_std, \
                        flow_mean, flow_std, fmid_mean, fmid_std, fhigh_mean, fhigh_std])
 
+        # Emit plain, wandb-independent metric lines FIRST, so the orchestrator
+        # (agents/programmer.py) can still parse "2_mse"/"4_l2rel"/"0_run_time"
+        # even if the wandb block below dies (e.g. Windows 260-char path limit in
+        # wandb's offline run dir). It matches the bare token followed by the value.
+        print(f"0_run_time {float(run_time_mean)}")
+        print(f"2_mse {float(mse_mean)}")
+        print(f"4_l2rel {float(l2rel_mean)}")
+
         # (1) 从 command_args_df 中提取 hyperparameters
+        # NOTE: wandb writes into <dir>/wandb/offline-run-.../tmp/code; pointing dir
+        # at the deep experiment folder overflows Windows MAX_PATH, so use a short
+        # temp root. Metrics still come from errors.txt / the prints above, not wandb.
+        wandb_dir = os.path.join(tempfile.gettempdir(), "pinns_wandb")
+        os.makedirs(wandb_dir, exist_ok=True)
         wandb.init(project="PINNsAgent-RandomSearch",  # 截断以确保不超过128个字符
                 name=f'{csv_name}-{command_args_dict["name"]}',
                 entity='qingpowuwu-study',
                 save_code=True,  # 保存代码
-                dir=f'{runs_dir}/{i}-0', # 保存到指定的文件夹
+                dir=wandb_dir, # short temp root (avoids Windows MAX_PATH overflow)
                 mode="offline",
                 config={
                     "name":   command_args_dict["name"],

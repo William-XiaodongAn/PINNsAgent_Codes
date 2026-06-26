@@ -275,7 +275,10 @@ def initialize_agents(args, config_loader, output_dir):
         "name": "iter",  # Initial name, will be updated in each run
         "output_dir": "./outputs/temp",  # Temporary directory, will be updated in each run
         "general_method": "none",
-        "loss_weight": "none",
+        # [pde, ic, periodic] — up-weight the IC term 100x so the net can't ignore
+        # the initial condition. ONLY valid for 3-loss PDEs (burgers/advection);
+        # FK/TNNP/heat have a different number of loss terms, set back to "none".
+        "loss_weight": "1,100,1",
         "num_test_points": "Default"
     })
     # Pass the Fenton-Karma instance selector through to benchmark.py (via the yaml),
