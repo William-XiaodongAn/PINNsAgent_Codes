@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from scipy import interpolate
+from scipy.spatial import QhullError
 from src.pde.baseclass import BaseTimePDE
 
 epsilon = 1e-10
@@ -105,9 +106,17 @@ def plot_heatmap(x, y, z, path=None, vmin=None, vmax=None, num=100, title='', xl
     yy = np.linspace(np.min(y), np.max(y), num)
     xx, yy = np.meshgrid(xx, yy)
 
-    vals = interpolate.griddata(np.array([x, y]).T, np.array(z), (xx, yy), method='cubic')
-    vals_0 = interpolate.griddata(np.array([x, y]).T, np.array(z), (xx, yy), method='nearest')
-    vals[np.isnan(vals)] = vals_0[np.isnan(vals)]
+    try:
+        vals = interpolate.griddata(np.array([x, y]).T, np.array(z), (xx, yy), method='cubic')
+        vals_0 = interpolate.griddata(np.array([x, y]).T, np.array(z), (xx, yy), method='nearest')
+        vals[np.isnan(vals)] = vals_0[np.isnan(vals)]
+    except QhullError:
+        # Degenerate point set: a single-frame reference for 1D-in-space time PDEs
+        # (advection/burgers-cardiac) has all points at one t, so the x-t scatter is
+        # collinear and no 2D Delaunay triangulation exists. 'cubic'/'linear' need
+        # that triangulation; 'nearest' uses a KDTree (no triangulation), so fall
+        # back to it instead of letting plotting crash training.
+        vals = interpolate.griddata(np.array([x, y]).T, np.array(z), (xx, yy), method='nearest')
     if pde is not None: # cut heatmap for non-rectangle geometry
         if isinstance(pde, BaseTimePDE):
             # vals[~pde.geomtime.inside(np.stack((xx, yy), axis=2))] = np.nan
