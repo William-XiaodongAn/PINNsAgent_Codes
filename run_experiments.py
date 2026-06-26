@@ -23,6 +23,25 @@ from utils.formatter import format_mse, format_time
 from database.pde_encoder import PDE_LABELS
 
 
+def _load_parent_llms():
+    """LLM allow-list from the parent cardiac-agent/experiment_config.json ('llms') --
+    the single source of truth shared with experiment.py / baselines. Each key is a
+    selectable model; its value carries the provider used for native-SDK routing in
+    utils/llm_client.py. API keys are read from the parent .env."""
+    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "..", "..", "experiment_config.json")
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            return json.load(f).get("llms", {})
+    except (OSError, ValueError) as e:
+        print(f"Warning: could not read parent LLM allow-list at {cfg_path}: {e}. "
+              f"--llm will be unconstrained.")
+        return {}
+
+
+PARENT_LLMS = _load_parent_llms()
+
+
 def parse_instances(spec):
     """Parse an instance spec like '0-49' or '0,1,2' or '0-3,7' into a deduped,
     order-preserving list of ints."""
@@ -108,6 +127,12 @@ def parse_args():
                        help='Experiment run name, used to distinguish different experiments')
     # Training settings
     parser.add_argument('--device', type=str, default='0', help='GPU device ID')
+    parser.add_argument('--llm', type=str, default=None,
+                        choices=(list(PARENT_LLMS.keys()) or None),
+                        help="LLM model that drives the search (llm mode only). Restricted to the "
+                             "parent cardiac-agent/experiment_config.json 'llms' allow-list; provider "
+                             "routing and the API key (from .env) are derived from that entry. "
+                             "Default: the model in configs/default_config.yaml llm_config.")
     parser.add_argument('--iter', type=int, default=20000, help='Training iteration count')
     parser.add_argument('--fk_instance', type=int, default=None,
                        help='Fenton-Karma test-set instance id: train on the batch-generated '
@@ -239,11 +264,22 @@ def initialize_agents(args, config_loader, output_dir):
     # Planner
     if args.mode == "llm":
         llm_config = config_loader.get_llm_config()
-        llm_client = LLMClient(
-            api_key=llm_config["api_key"],
-            base_url=llm_config["base_url"],
-            model=llm_config["model"]
-        )
+        if args.llm:
+            # Model picked from the parent allow-list: route by its provider and let
+            # LLMClient pull the matching key from .env (api_key omitted on purpose).
+            provider = PARENT_LLMS.get(args.llm, {}).get("provider")
+            llm_client = LLMClient(
+                model=args.llm,
+                provider=provider,
+                base_url=llm_config.get("base_url", "https://api.openai.com/v1"),
+            )
+            print(f"Using LLM '{args.llm}' (provider={provider or 'inferred'}) from the parent allow-list")
+        else:
+            llm_client = LLMClient(
+                api_key=llm_config.get("api_key"),
+                base_url=llm_config.get("base_url", "https://api.openai.com/v1"),
+                model=llm_config.get("model", "gpt-4o"),
+            )
         # Prepare kwargs for different prompt strategies
         prompt_kwargs = {}
         if args.prompt_strategy == "pinns_agent":
