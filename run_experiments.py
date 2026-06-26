@@ -146,8 +146,8 @@ def parse_args():
     # Path settings
     parser.add_argument('--config_path', type=str, default=None,
                        help='Configuration file path')
-    parser.add_argument('--csv_path', type=str, 
-                       default='./project-2364_1282-filtered-all_pdes_105-top_mse_rows.csv',
+    parser.add_argument('--csv_path', type=str,
+                       default='./data/dataset_for_retrieval.csv',
                        help='Knowledge base CSV file path')
     parser.add_argument('--train_code_dir', type=str, default="./pinnacle",
                        help='Training code directory (where benchmark.py is located)')
