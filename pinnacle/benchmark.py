@@ -257,10 +257,34 @@ if __name__ == "__main__":
             # print(f"\n{BLUE}{'== (2).4 定义损失函数的权重 ======================================= '}{RESET}\n")
 
             loss_weights = parse_loss_weight(command_args.loss_weight) # 解析损失权重, e.g, '1,2,3' -> [1.0, 2.0, 3.0]
-            if loss_weights is None:
-                loss_weights = np.ones(pde.num_loss)
-            else:
+            # The DeepXDE loss vector is ordered [PDE residuals, (gepinn terms),
+            # one term per pde.bcs entry], so the BC/IC terms ALWAYS occupy the
+            # last len(pde.bcs) positions. For 1-variable PDEs (burgers/advection)
+            # the supplied '1,100,1' = [pde, IC, periodic] up-weights the IC 100x.
+            #
+            # For multi-component / 2D PDEs (fenton=7, heat=4, TNNP=41 loss terms)
+            # that fixed-length string can't match num_loss, and a uniform fallback
+            # would drop the IC emphasis entirely -- the IC (a few terms) then gets
+            # drowned by the many PDE-residual terms and the net ignores it. So we
+            # generalize the same intent: weight 1 everywhere, every IC term IC_WEIGHTx.
+            IC_WEIGHT = 100.0  # bump this if higher-order ICs need even more emphasis
+            if loss_weights is not None and len(loss_weights) == pde.num_loss:
+                # supplied weights already match the PDE -> trust them (LLM-tuned case)
                 loss_weights = np.array(loss_weights)
+            else:
+                if loss_weights is not None:
+                    print(f"[loss_weights] supplied length {len(loss_weights)} != pde.num_loss "
+                          f"{pde.num_loss}; building IC-emphasized weights instead.")
+                loss_weights = np.ones(pde.num_loss)
+                bc_offset = pde.num_loss - len(pde.bcs)  # first BC/IC term index
+                ic_idx = []
+                for i, bc in enumerate(pde.bcs):
+                    if isinstance(bc, dde.IC):
+                        loss_weights[bc_offset + i] = IC_WEIGHT
+                        ic_idx.append(bc_offset + i)
+                print(f"[loss_weights] IC-emphasized: num_loss={pde.num_loss}, "
+                      f"num_pde={pde.num_pde}, IC indices={ic_idx} -> {IC_WEIGHT}, "
+                      f"vector={loss_weights.tolist()}")
 
 
             # (2).5 定义优化器 (根据 command_args.optimizer 来选择)
