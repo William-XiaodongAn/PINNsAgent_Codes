@@ -52,7 +52,7 @@ search_space:
       "gaussian",
     ]
   net: ["fnn", "laaf", "gaaf"] # FNNs, LAAFs, GAAFs
-  optimizer: ["sgd", "adam", "multiadam", "lbfgs"]
+  optimizer: ["sgd", "adam", "multiadam"]  # lbfgs removed: ~7500s/config caused 4h timeouts (vs ~440s for adam)
   lr: [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1] # 10^-6 to 10^-1
   width: [
       8,
